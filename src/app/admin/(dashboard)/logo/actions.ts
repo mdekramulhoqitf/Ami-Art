@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
 import type { Database } from "@/lib/types";
 
 type LogosUpdate = Database["public"]["Tables"]["logos"]["Update"];
@@ -32,18 +31,14 @@ export async function updateLogos(
   let hasUpdate = false;
 
   for (const field of FIELDS) {
-    const file = formData.get(field.form) as File | null;
-    if (!file || file.size === 0) continue;
+    const url = getUploadedImageUrl(formData, field.form, "logos");
+    if (!url) continue;
 
-    const imageError = validateImageFile(file);
-    if (imageError) return { message: imageError, success: false };
-
-    const url = await uploadImage(supabase, "logos", file);
     update[field.column] = url;
     hasUpdate = true;
 
     const oldUrl = existing?.[field.column as keyof typeof existing] as string | null | undefined;
-    if (oldUrl) await deleteImage(supabase, "logos", oldUrl);
+    if (oldUrl && oldUrl !== url) await deleteImage(supabase, "logos", oldUrl);
   }
 
   if (!hasUpdate) {

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { heroSlideSchema, validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
+import { heroSlideSchema } from "@/lib/validation";
 import type { Database } from "@/lib/types";
 
 type HeroSlideUpdate = Database["public"]["Tables"]["hero_slides"]["Update"];
@@ -37,20 +37,11 @@ export async function createHeroSlide(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError || !file || file.size === 0) {
-    return { message: imageError ?? "একটি ছবি আবশ্যক।" };
-  }
-
-  const mobileFile = formData.get("mobile_image") as File | null;
-  const mobileImageError = validateImageFile(mobileFile);
-  if (mobileImageError) return { message: mobileImageError };
+  const imageUrl = getUploadedImageUrl(formData, "image", "hero-sliders");
+  if (!imageUrl) return { message: "একটি ছবি আবশ্যক।" };
+  const mobileImageUrl = getUploadedImageUrl(formData, "mobile_image", "hero-sliders");
 
   const supabase = await createClient();
-  const imageUrl = await uploadImage(supabase, "hero-sliders", file);
-  const mobileImageUrl =
-    mobileFile && mobileFile.size > 0 ? await uploadImage(supabase, "hero-sliders", mobileFile) : null;
 
   const { error } = await supabase.from("hero_slides").insert({
     ...validated.data,
@@ -77,32 +68,31 @@ export async function updateHeroSlide(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError };
-
-  const mobileFile = formData.get("mobile_image") as File | null;
-  const mobileImageError = validateImageFile(mobileFile);
-  if (mobileImageError) return { message: mobileImageError };
+  const imageUrl = getUploadedImageUrl(formData, "image", "hero-sliders");
+  const mobileImageUrl = getUploadedImageUrl(formData, "mobile_image", "hero-sliders");
 
   const supabase = await createClient();
 
   const update: HeroSlideUpdate = { ...validated.data };
 
-  if ((file && file.size > 0) || (mobileFile && mobileFile.size > 0)) {
+  if (imageUrl || mobileImageUrl) {
     const { data: existing } = await supabase
       .from("hero_slides")
       .select("image_url, mobile_image_url")
       .eq("id", id)
       .maybeSingle();
 
-    if (file && file.size > 0) {
-      update.image_url = await uploadImage(supabase, "hero-sliders", file);
-      if (existing?.image_url) await deleteImage(supabase, "hero-sliders", existing.image_url);
+    if (imageUrl) {
+      update.image_url = imageUrl;
+      if (existing?.image_url && existing.image_url !== imageUrl) {
+        await deleteImage(supabase, "hero-sliders", existing.image_url);
+      }
     }
-    if (mobileFile && mobileFile.size > 0) {
-      update.mobile_image_url = await uploadImage(supabase, "hero-sliders", mobileFile);
-      if (existing?.mobile_image_url) await deleteImage(supabase, "hero-sliders", existing.mobile_image_url);
+    if (mobileImageUrl) {
+      update.mobile_image_url = mobileImageUrl;
+      if (existing?.mobile_image_url && existing.mobile_image_url !== mobileImageUrl) {
+        await deleteImage(supabase, "hero-sliders", existing.mobile_image_url);
+      }
     }
   }
 

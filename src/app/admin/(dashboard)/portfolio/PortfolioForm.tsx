@@ -33,6 +33,7 @@ export function PortfolioForm({
     <form action={formAction} className="max-w-2xl space-y-6">
       <UploadField
         name="image"
+        bucket="portfolio"
         label="প্রকল্পের ছবি"
         existingUrl={item?.image_url}
         required={!item}

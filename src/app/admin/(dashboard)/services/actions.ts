@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { serviceSchema, validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
+import { serviceSchema } from "@/lib/validation";
 import type { Database } from "@/lib/types";
 
 type ServiceUpdate = Database["public"]["Tables"]["services"]["Update"];
@@ -100,16 +100,12 @@ export async function createService(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError };
+  const imageUrl = getUploadedImageUrl(formData, "image", "services");
 
   const supabase = await createClient();
   const insert: ServiceInsert = { ...validated.data };
 
-  if (file && file.size > 0) {
-    insert.image_url = await uploadImage(supabase, "services", file);
-  }
+  if (imageUrl) insert.image_url = imageUrl;
 
   let { error } = await supabase.from("services").insert(insert);
   if (isPendingMigrationColumnError(error)) {
@@ -135,21 +131,21 @@ export async function updateService(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError };
+  const imageUrl = getUploadedImageUrl(formData, "image", "services");
 
   const supabase = await createClient();
   const update: ServiceUpdate = { ...validated.data };
 
-  if (file && file.size > 0) {
+  if (imageUrl) {
     const { data: existing } = await supabase
       .from("services")
       .select("image_url")
       .eq("id", id)
       .maybeSingle();
-    update.image_url = await uploadImage(supabase, "services", file);
-    if (existing?.image_url) await deleteImage(supabase, "services", existing.image_url);
+    update.image_url = imageUrl;
+    if (existing?.image_url && existing.image_url !== imageUrl) {
+      await deleteImage(supabase, "services", existing.image_url);
+    }
   }
 
   let { error } = await supabase.from("services").update(update).eq("id", id);

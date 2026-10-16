@@ -80,7 +80,8 @@ running app never imports it. SMTP is entirely optional: if unset, order emails 
 ## Supabase Setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. In the SQL Editor, run `supabase/migrations/0001_init.sql`, then `supabase/seed.sql`. This
+2. In the SQL Editor, run every file in `supabase/migrations/` in filename order (`0001` …
+   `0022`; there is no `0019`), then `supabase/seed.sql`. `0001_init.sql`
    creates every table (including `orders`, `order_attachments`, `order_messages`), RLS
    policies, the five public storage buckets (`logos`, `hero-sliders`, `about`, `services`,
    `portfolio`) plus the private `order-files` bucket, the order RPC functions, and enables
@@ -113,13 +114,34 @@ it's configured.
 
 ## Deploying
 
-Any Next.js host works (e.g. Vercel). Set the environment variables above in your host's
-dashboard — `SUPABASE_SERVICE_ROLE_KEY` is optional in production since it's only used by the
-local admin-creation script, not the running app.
+Built and verified for Vercel (`npm run build` passes, no extra config needed). The live
+site already has a Supabase project with content, so for an existing project skip straight to
+step 2.
 
-```bash
-vercel deploy
-```
+1. **Supabase:** if `supabase/migrations/0022_storage_upload_limits.sql` hasn't been run on
+   the live project yet, run it in the SQL Editor (sets per-bucket upload size limits).
+2. **Import to Vercel:** push this folder to a Git repo and import it in Vercel (framework
+   preset: Next.js, defaults for build/output), or run `vercel deploy` from this folder.
+3. **Environment variables** (Vercel → Project → Settings → Environment Variables):
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — required
+   - `NEXT_PUBLIC_SITE_URL` — the production domain, e.g. `https://amiart.com.bd`; without it
+     sitemap, robots, order emails and referral links point at `localhost:3000`
+   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — optional (order emails)
+   - Do **not** add `SUPABASE_SERVICE_ROLE_KEY`; it is only for the local admin script.
+
+   `NEXT_PUBLIC_*` values are baked in at build time, so redeploy after changing them.
+4. **Domain:** add it in Vercel → Domains, then set `NEXT_PUBLIC_SITE_URL` to match and
+   redeploy.
+5. **Check after deploy:** home hero slider shows, `/admin/login` works, upload a ~4–5 MB image
+   in admin, and submit a test order with a file over 4.5 MB.
+
+Uploads (admin images and order files) go straight from the browser to Supabase Storage;
+Server Actions only receive the resulting URL/path. This is deliberate — Vercel rejects
+function request bodies over 4.5 MB — so don't move uploads back into Server Actions.
+
+Supabase free-tier projects pause after a period of inactivity. When paused, the site still
+loads but shows no slides, services or other database content until the project is restored
+from the Supabase dashboard.
 
 ## Content Management
 

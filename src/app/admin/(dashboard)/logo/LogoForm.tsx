@@ -70,6 +70,7 @@ export function LogoForm({ logos }: { logos: Logos }) {
           <div key={field.name}>
             <UploadField
               name={field.name}
+              bucket="logos"
               label={field.label}
               existingUrl={logos[field.column]}
               aspect={field.aspect}

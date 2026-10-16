@@ -41,7 +41,7 @@ export function AboutForm({ about }: { about: AboutContent }) {
         </FormField>
       </div>
 
-      <UploadField name="image" label="About পাতার ছবি" existingUrl={about.image_url} aspect="aspect-video" specKey="aboutImage" />
+      <UploadField name="image" bucket="about" label="About পাতার ছবি" existingUrl={about.image_url} aspect="aspect-video" specKey="aboutImage" />
 
       <div>
         <h3 className="mb-2 text-sm font-medium text-ink">কেন আমাদের বেছে নেবেন</h3>
@@ -62,6 +62,7 @@ export function AboutForm({ about }: { about: AboutContent }) {
 
         <UploadField
           name="owner_image"
+          bucket="about"
           label="মালিকের ছবি"
           existingUrl={about.owner_image_url}
           aspect="aspect-[4/5]"

@@ -1,16 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    // Default is 1MB — too small for admin image uploads (up to 5MB,
-    // MAX_IMAGE_BYTES) and order attachments (up to 50MB total,
-    // MAX_ORDER_TOTAL_BYTES), both submitted via Server Actions. Without
-    // this, any upload over 1MB throws "Body exceeded 1 MB limit" and
-    // hits the error boundary instead of the intended validation message.
-    serverActions: {
-      bodySizeLimit: "55mb",
-    },
-  },
+  // No serverActions.bodySizeLimit bump: admin images and order files upload
+  // straight from the browser to Supabase Storage (Vercel caps a function
+  // request body at 4.5 MB), so action bodies stay well under the 1 MB default.
   images: {
     remotePatterns: [
       {

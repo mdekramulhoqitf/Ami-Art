@@ -527,7 +527,10 @@ const ORDER_FILE_MIME_TYPES = [
   "application/octet-stream", // browsers often fall back to this for .ai/.psd
 ];
 
-export function validateOrderFile(file: File): string | null {
+/** A browser File, or the metadata of one already uploaded straight to Storage. */
+export type OrderFileMeta = Pick<File, "name" | "type" | "size">;
+
+export function validateOrderFile(file: OrderFileMeta): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   const extensionOk = ORDER_FILE_EXTENSIONS.includes(extension);
   const mimeOk = !file.type || ORDER_FILE_MIME_TYPES.includes(file.type);
@@ -541,7 +544,7 @@ export function validateOrderFile(file: File): string | null {
   return null;
 }
 
-export function validateOrderFileList(files: File[]): string | null {
+export function validateOrderFileList(files: OrderFileMeta[]): string | null {
   if (files.length > MAX_ORDER_FILES) {
     return `একবারে সর্বোচ্চ ${MAX_ORDER_FILES}টি ফাইল সংযুক্ত করা যাবে।`;
   }

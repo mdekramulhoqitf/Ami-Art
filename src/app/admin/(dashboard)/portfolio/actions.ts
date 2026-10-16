@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { portfolioItemSchema, validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
+import { portfolioItemSchema } from "@/lib/validation";
 import type { Database } from "@/lib/types";
 
 type PortfolioUpdate = Database["public"]["Tables"]["portfolio_items"]["Update"];
@@ -37,14 +37,10 @@ export async function createPortfolioItem(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError || !file || file.size === 0) {
-    return { message: imageError ?? "প্রকল্পের একটি ছবি আবশ্যক।" };
-  }
+  const imageUrl = getUploadedImageUrl(formData, "image", "portfolio");
+  if (!imageUrl) return { message: "প্রকল্পের একটি ছবি আবশ্যক।" };
 
   const supabase = await createClient();
-  const imageUrl = await uploadImage(supabase, "portfolio", file);
 
   const { error } = await supabase.from("portfolio_items").insert({
     ...validated.data,
@@ -71,21 +67,21 @@ export async function updatePortfolioItem(
     return { errors: validated.error.flatten().fieldErrors, message: "নিচের ভুলগুলো ঠিক করুন।" };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError };
+  const imageUrl = getUploadedImageUrl(formData, "image", "portfolio");
 
   const supabase = await createClient();
   const update: PortfolioUpdate = { ...validated.data };
 
-  if (file && file.size > 0) {
+  if (imageUrl) {
     const { data: existing } = await supabase
       .from("portfolio_items")
       .select("image_url")
       .eq("id", id)
       .maybeSingle();
-    update.image_url = await uploadImage(supabase, "portfolio", file);
-    if (existing?.image_url) await deleteImage(supabase, "portfolio", existing.image_url);
+    update.image_url = imageUrl;
+    if (existing?.image_url && existing.image_url !== imageUrl) {
+      await deleteImage(supabase, "portfolio", existing.image_url);
+    }
   }
 
   const { error } = await supabase.from("portfolio_items").update(update).eq("id", id);

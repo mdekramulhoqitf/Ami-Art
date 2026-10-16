@@ -39,6 +39,7 @@ export function SectionBannerForm({ banner, label }: { banner: SectionBanner; la
       <div>
         <UploadField
           name="image"
+          bucket="about"
           label="কভার ছবি আপলোড করুন"
           existingUrl={banner.image_url}
           aspect="aspect-[21/9]"

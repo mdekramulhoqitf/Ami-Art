@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { sectionBannerSchema, validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
+import { sectionBannerSchema } from "@/lib/validation";
 import type { Database, SectionBannerSlug } from "@/lib/types";
 
 type SectionBannerInsert = Database["public"]["Tables"]["section_banners"]["Insert"];
@@ -56,9 +56,7 @@ export async function updateSectionBanner(
     };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError, success: false };
+  const imageUrl = getUploadedImageUrl(formData, "image", "about");
 
   const supabase = await createClient();
   // Optional text fields: an intentionally-cleared field must overwrite the
@@ -74,15 +72,16 @@ export async function updateSectionBanner(
     alt_text: alt_text || null,
   };
 
-  if (file && file.size > 0) {
+  if (imageUrl) {
     const { data: existing } = await supabase
       .from("section_banners")
       .select("image_url")
       .eq("slug", slug)
       .maybeSingle();
-    const url = await uploadImage(supabase, "about", file);
-    update.image_url = url;
-    if (existing?.image_url) await deleteImage(supabase, "about", existing.image_url);
+    update.image_url = imageUrl;
+    if (existing?.image_url && existing.image_url !== imageUrl) {
+      await deleteImage(supabase, "about", existing.image_url);
+    }
   }
 
   const { error } = await supabase.from("section_banners").upsert(update);

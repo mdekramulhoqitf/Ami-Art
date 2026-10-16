@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { uploadImage, deleteImage } from "@/lib/supabase/storage";
-import { aboutContentSchema, validateImageFile } from "@/lib/validation";
+import { getUploadedImageUrl, deleteImage } from "@/lib/supabase/storage";
+import { aboutContentSchema } from "@/lib/validation";
 
 export type AboutFormState = {
   errors?: Record<string, string[]>;
@@ -99,35 +99,34 @@ export async function updateAboutContent(
     };
   }
 
-  const file = formData.get("image") as File | null;
-  const imageError = validateImageFile(file);
-  if (imageError) return { message: imageError, success: false };
-
-  const ownerFile = formData.get("owner_image") as File | null;
-  const ownerImageError = validateImageFile(ownerFile);
-  if (ownerImageError) return { message: ownerImageError, success: false };
+  const imageUrl = getUploadedImageUrl(formData, "image", "about");
+  const ownerImageUrl = getUploadedImageUrl(formData, "owner_image", "about");
 
   const supabase = await createClient();
   const update: Record<string, unknown> = { id: 1, ...validated.data };
 
-  if (file && file.size > 0) {
+  if (imageUrl) {
     const { data: existing } = await supabase
       .from("about_content")
       .select("image_url")
       .eq("id", 1)
       .maybeSingle();
-    update.image_url = await uploadImage(supabase, "about", file);
-    if (existing?.image_url) await deleteImage(supabase, "about", existing.image_url);
+    update.image_url = imageUrl;
+    if (existing?.image_url && existing.image_url !== imageUrl) {
+      await deleteImage(supabase, "about", existing.image_url);
+    }
   }
 
-  if (ownerFile && ownerFile.size > 0) {
+  if (ownerImageUrl) {
     const { data: existing } = await supabase
       .from("about_content")
       .select("owner_image_url")
       .eq("id", 1)
       .maybeSingle();
-    update.owner_image_url = await uploadImage(supabase, "about", ownerFile);
-    if (existing?.owner_image_url) await deleteImage(supabase, "about", existing.owner_image_url);
+    update.owner_image_url = ownerImageUrl;
+    if (existing?.owner_image_url && existing.owner_image_url !== ownerImageUrl) {
+      await deleteImage(supabase, "about", existing.owner_image_url);
+    }
   }
 
   let { error } = await supabase.from("about_content").upsert(update);

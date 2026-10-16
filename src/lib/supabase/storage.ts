@@ -4,10 +4,35 @@ export type Bucket = "logos" | "hero-sliders" | "about" | "services" | "portfoli
 export const ORDER_FILES_BUCKET = "order-files";
 
 function extensionFor(file: File) {
-  const fromName = file.name.split(".").pop();
-  if (fromName && fromName.length <= 5) return fromName.toLowerCase();
-  const fromType = file.type.split("/").pop();
-  return fromType ?? "bin";
+  const fromName = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+  if (/^[a-z0-9]{1,5}$/.test(fromName)) return fromName;
+  const fromType = (file.type.split("/").pop() ?? "").replace(/[^a-z0-9]/g, "").slice(0, 5);
+  return fromType || "bin";
+}
+
+// Admin images are uploaded straight from the browser (UploadField) and only
+// the resulting public URL reaches the Server Action — Vercel caps a function
+// request body at 4.5 MB, so files must never ride along in the action body.
+const UPLOADED_IMAGE_PATH = /^[0-9a-f-]{36}\.[a-z0-9]{1,5}$/;
+
+/**
+ * The new image URL the admin UploadField put in `field`, or null if no new
+ * image was chosen. A client-supplied URL is only accepted when it points at
+ * a freshly uploaded object in `bucket` on this project's Storage.
+ */
+export function getUploadedImageUrl(formData: FormData, field: string, bucket: Bucket): string | null {
+  const value = formData.get(field);
+  if (typeof value !== "string" || !value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.host !== new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).host) return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  if (!url.pathname.startsWith(marker)) return null;
+  return UPLOADED_IMAGE_PATH.test(url.pathname.slice(marker.length)) ? value : null;
 }
 
 export async function uploadImage(
@@ -54,11 +79,17 @@ export async function deleteImage(
 // Order files — private bucket, arbitrary file types (not just images).
 // ---------------------------------------------------------------------------
 
-export function orderFilePath(orderId: string, folder: "customer-files" | "messages", fileName: string) {
-  const extension = fileName.split(".").pop();
-  const safeName = `${crypto.randomUUID()}${extension ? `.${extension.toLowerCase()}` : ""}`;
-  return `${orderId}/${folder}/${safeName}`;
+// Order files are uploaded from the customer's browser before the order exists
+// (same 4.5 MB Vercel body cap as above), so they live under a per-submission
+// batch folder rather than the order id.
+export function incomingOrderFilePath(batchId: string, fileName: string) {
+  const extension = fileName.includes(".")
+    ? fileName.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10)
+    : "";
+  return `incoming/${batchId}/${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
 }
+
+export const INCOMING_ORDER_FILE_PATH = /^incoming\/[0-9a-f-]{36}\/[0-9a-f-]{36}(\.[a-z0-9]{1,10})?$/;
 
 export async function uploadOrderFile(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

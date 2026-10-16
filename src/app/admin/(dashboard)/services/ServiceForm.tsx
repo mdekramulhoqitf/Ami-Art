@@ -171,6 +171,7 @@ export function ServiceForm({
       </p>
       <UploadField
         name="image"
+        bucket="services"
         label="সেবার ছবি"
         existingUrl={service?.image_url}
         aspect={

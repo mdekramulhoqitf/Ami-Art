@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { FileUpload } from "./FileUpload";
 import { OrderProductFields, type CustomFieldsValue } from "@/components/site/OrderProductFields";
 import { PricingCalculator, type PricingSelection } from "@/components/site/PricingCalculator";
-import { submitOrder } from "./actions";
+import { submitOrder, type OrderAttachment } from "./actions";
+import { incomingOrderFilePath, uploadOrderFile } from "@/lib/supabase/storage";
 import { orderCustomerSchema, orderDetailsSchema, DELIVERY_METHODS, BUDGET_TYPES } from "@/lib/validation";
 import { DELIVERY_METHOD_LABELS } from "@/lib/invoice-status";
 import { cn } from "@/lib/utils";
@@ -105,6 +106,7 @@ export function OrderForm({
   const [isNewCustomer, setIsNewCustomer] = useState<boolean | null>(null);
   const [welcomePoints, setWelcomePoints] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -216,9 +218,29 @@ export function OrderForm({
         })
       );
     }
-    files.forEach((file) => formData.append("files", file));
-
     startTransition(async () => {
+      // Files go straight from the browser to Storage; only their paths
+      // reach the Server Action, whose body Vercel caps at 4.5 MB.
+      if (files.length > 0) {
+        setUploadingFiles(true);
+        try {
+          const supabase = createClient();
+          const batchId = crypto.randomUUID();
+          const attachments: OrderAttachment[] = [];
+          for (const file of files) {
+            const path = incomingOrderFilePath(batchId, file.name);
+            await uploadOrderFile(supabase, path, file);
+            attachments.push({ path, name: file.name, type: file.type, size: file.size });
+          }
+          formData.set("attachments", JSON.stringify(attachments));
+        } catch {
+          setSubmitError("ফাইল আপলোড করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।");
+          return;
+        } finally {
+          setUploadingFiles(false);
+        }
+      }
+
       const result = await submitOrder(formData);
       if (result.success && result.orderNumber) {
         setOrderNumber(result.orderNumber);
@@ -741,7 +763,11 @@ export function OrderForm({
               onClick={handleSubmit}
               disabled={pending}
             >
-              {pending ? "অর্ডার পাঠানো হচ্ছে..." : "অর্ডার নিশ্চিত করুন"}
+              {uploadingFiles
+                ? "ফাইল আপলোড হচ্ছে..."
+                : pending
+                  ? "অর্ডার পাঠানো হচ্ছে..."
+                  : "অর্ডার নিশ্চিত করুন"}
             </Button>
           )}
         </div>

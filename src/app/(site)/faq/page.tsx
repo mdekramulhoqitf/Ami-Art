@@ -59,3 +59,5 @@ export default async function FaqPage() {
     </section>
   );
 }
+
+export const revalidate = 60;

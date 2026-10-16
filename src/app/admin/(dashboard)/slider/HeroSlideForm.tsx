@@ -34,6 +34,7 @@ export function HeroSlideForm({
     <form action={formAction} className="space-y-6">
       <UploadField
         name="image"
+        bucket="hero-sliders"
         label="ডেস্কটপ ব্যানার"
         existingUrl={slide?.image_url}
         required={!slide}
@@ -44,6 +45,7 @@ export function HeroSlideForm({
       <div>
         <UploadField
           name="mobile_image"
+          bucket="hero-sliders"
           label="মোবাইল ব্যানার"
           existingUrl={slide?.mobile_image_url}
           aspect="aspect-[4/5]"

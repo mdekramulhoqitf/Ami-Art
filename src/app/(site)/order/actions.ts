@@ -1,8 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { orderFilePath, uploadOrderFile } from "@/lib/supabase/storage";
-import { orderFormSchema, bannerFieldsSchema, validateOrderFileList } from "@/lib/validation";
+import { z } from "zod";
+import { INCOMING_ORDER_FILE_PATH } from "@/lib/supabase/storage";
+import { orderFormSchema, bannerFieldsSchema, validateOrderFileList, MAX_ORDER_FILES } from "@/lib/validation";
 import { sendOrderNotificationEmail } from "@/lib/email";
 import { calculateServicePrice, servicePricingConfig, type PricingOption } from "@/lib/pricing-engine";
 import type { Json } from "@/lib/types";
@@ -20,6 +21,21 @@ type PricingInput = {
   deliveryFee?: number;
   discount?: number;
 };
+
+/** Files the customer's browser already uploaded to Storage — the files
+ * themselves never ride in this action's body (Vercel caps it at 4.5 MB). */
+const orderAttachmentsSchema = z
+  .array(
+    z.object({
+      path: z.string().regex(INCOMING_ORDER_FILE_PATH),
+      name: z.string().trim().min(1).max(255),
+      type: z.string().max(255),
+      size: z.number().int().nonnegative(),
+    })
+  )
+  .max(MAX_ORDER_FILES);
+
+export type OrderAttachment = z.infer<typeof orderAttachmentsSchema>[number];
 
 export type OrderFormState = {
   success: boolean;
@@ -82,7 +98,18 @@ export async function submitOrder(formData: FormData): Promise<OrderFormState> {
     }
   }
 
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  let attachmentsRaw: unknown = [];
+  try {
+    const value = formData.get("attachments");
+    if (typeof value === "string" && value) attachmentsRaw = JSON.parse(value);
+  } catch {
+    attachmentsRaw = null;
+  }
+  const attachments = orderAttachmentsSchema.safeParse(attachmentsRaw);
+  if (!attachments.success) {
+    return { success: false, message: "ফাইলগুলো সংযুক্ত করা যায়নি। আবার চেষ্টা করুন।" };
+  }
+  const files = attachments.data;
   const fileError = validateOrderFileList(files);
   if (fileError) {
     return { success: false, message: fileError };
@@ -191,19 +218,17 @@ export async function submitOrder(formData: FormData): Promise<OrderFormState> {
 
   for (const file of files) {
     try {
-      const path = orderFilePath(order.id, "customer-files", file.name);
-      await uploadOrderFile(supabase, path, file);
       await supabase.rpc("add_order_attachment", {
         p_order_id: order.id,
         p_file_name: file.name,
-        p_file_path: path,
-        p_file_url: path,
+        p_file_path: file.path,
+        p_file_url: file.path,
         p_file_type: file.type || "application/octet-stream",
         p_file_size: file.size,
       });
     } catch {
       // The order itself is already submitted successfully; one attachment
-      // failing to upload shouldn't fail the whole order. The admin can ask
+      // failing to record shouldn't fail the whole order. The admin can ask
       // the customer to resend it via the reply thread if needed.
     }
   }
